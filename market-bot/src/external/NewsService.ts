@@ -7,7 +7,6 @@ export interface INewsArticle {
     [key: string]: any;
 }
 
-// Example: Fetch latest news from Reddit (or any news API)
 const REDDIT_NEWS_URL = 'https://www.reddit.com/r/stocks/new.json?limit=5';
 
 export class NewsService {
@@ -20,11 +19,10 @@ export class NewsService {
             return [];
         }
 
-        // Map Reddit posts to INewsArticle
         return response.data.data.children.map((child: any) => ({
             title: child.data.title,
             url: `https://reddit.com${child.data.permalink}`,
-            sentiment: 'Neutral', // You can add sentiment analysis here if needed
+            sentiment: 'Neutral', 
         }));
     }
 }

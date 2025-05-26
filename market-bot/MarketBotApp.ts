@@ -13,7 +13,6 @@ export class MarketBotApp extends App {
 
     public async extendConfiguration(configuration: IConfigurationExtend, environmentRead: IEnvironmentRead): Promise<void> {
         await configuration.slashCommands.provideSlashCommand(new FinanceChatCommand());
-        // Register settings for API keys
         await configuration.settings.provideSetting({
             id: 'alpha_vantage_api_key',
             type: SettingType.STRING,

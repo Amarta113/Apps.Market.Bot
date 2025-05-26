@@ -3,11 +3,13 @@ import { IRead, IModify, IHttp, IPersistence, ILogger } from '@rocket.chat/apps-
 import { AlphaVantageService, IMarketData, ITechnicalIndicators } from '../external/AlphaVantage';
 import { CoinGeckoService, ICoinGeckoMarketData } from '../external/CoinGeckoService';
 import { NewsService, INewsArticle } from '../external/NewsService';
-import { getGeminiChatResponse } from '../external/GeminiService';
+import { GeminiService } from '../external/GeminiService';
+import { buildCryptoPrompt } from '../prompts/cryptoPrompt';
+import { buildStockPrompt } from '../prompts/stockPrompt';
 
 export class FinanceChatCommand implements ISlashCommand {
     public command = 'financechat';
-    public i18nDescription = 'Finance & stock market chatbot';
+    public i18nDescription = 'Get financial insights, stock and crypto data, and smart summaries.';
     public i18nParamsExample = '[stock_symbol or crypto_ticker] or [financial_query]';
     public providesPreview = false;
 
@@ -18,8 +20,8 @@ export class FinanceChatCommand implements ISlashCommand {
         http: IHttp,
         persistence: IPersistence
     ): Promise<void> {
-        const logger: ILogger | undefined = (this as any).logger; // If you inject logger in your App, pass it here
-
+        const logger: ILogger | undefined = (this as any).logger;
+        const llm = new GeminiService(); 
         try {
             const args: string[] = context.getArguments();
             if (!args || args.length === 0) {
@@ -31,7 +33,6 @@ export class FinanceChatCommand implements ISlashCommand {
                 return;
             }
 
-            // Sanitize and validate input
             const query: string = args.join(' ').trim();
             if (!query.match(/^[\w\s\.\-\$]+$/)) {
                 await this.notifyUser(
@@ -42,104 +43,79 @@ export class FinanceChatCommand implements ISlashCommand {
                 return;
             }
 
-            const ticker: string = args[0].toUpperCase();
-
-            // Try to classify as crypto using CoinGecko search
-            let coins: Array<{ id: string; symbol: string; name: string }> = [];
-            try {
-                coins = await CoinGeckoService.searchCoins(ticker, http);
-            } catch (err) {
-                logger?.error?.(`CoinGecko search error: ${err}`);
-            }
-            const coinMatch = coins.find(c => c.symbol.toUpperCase() === ticker);
+    
+            const tickers = args.filter(arg => /^[A-Za-z0-9]+$/.test(arg));
+            const isMultiTicker = tickers.length === args.length && tickers.length > 1;
+            const isSingleTicker = tickers.length === 1 && args.length === 1;
 
             let prompt: string;
             let news: INewsArticle[] = [];
             let responseText: string;
 
-            if (coinMatch) {
-                // Crypto via CoinGecko
-                let coinData: ICoinGeckoMarketData | undefined;
+            if (isSingleTicker) {
+                const ticker = tickers[0].toUpperCase();
+                let coins: Array<{ id: string; symbol: string; name: string }> = [];
                 try {
-                    coinData = await CoinGeckoService.getMarketData(coinMatch.id, http);
+                    coins = await CoinGeckoService.searchCoins(ticker, http);
                 } catch (err) {
-                    logger?.error?.(`CoinGecko market data error: ${err}`);
+                    logger?.error?.(`CoinGecko search error: ${err}`);
                 }
-                try {
-                    news = await NewsService.getLatestNews(http);
-                } catch (err) {
-                    logger?.error?.(`NewsService error: ${err}`);
+                const coinMatch = coins.find(c => c.symbol.toUpperCase() === ticker);
+
+                if (coinMatch) {
+                    let coinData: ICoinGeckoMarketData | undefined;
+                    try {
+                        coinData = await CoinGeckoService.getMarketData(coinMatch.id, http);
+                    } catch (err) {
+                        logger?.error?.(`CoinGecko market data error: ${err}`);
+                    }
+                    try {
+                        news = await NewsService.getLatestNews(http);
+                    } catch (err) {
+                        logger?.error?.(`NewsService error: ${err}`);
+                    }
+                    prompt = buildCryptoPrompt(query, coinData, news);
+                } else {
+                    let marketData: IMarketData = {};
+                    let indicators: ITechnicalIndicators = {};
+                    try {
+                        marketData = await AlphaVantageService.getMarketData(ticker, http, read) ?? {};
+                        indicators = await AlphaVantageService.getTechnicalIndicators(ticker, http, read) ?? {};
+                    } catch (err) {
+                        logger?.error?.(`AlphaVantage error: ${err}`);
+                    }
+                    try {
+                        news = await NewsService.getLatestNews(http);
+                    } catch (err) {
+                        logger?.error?.(`NewsService error: ${err}`);
+                    }
+
+                    if (!marketData.price) {
+                        await this.notifyUser(
+                            modify,
+                            context,
+                            `⚠️ Market data for *${ticker}* is unavailable. Please check the symbol.`
+                        );
+                        return;
+                    }
+                    prompt = buildStockPrompt(query, ticker, marketData, indicators, news);
                 }
-
-                prompt = `
-You are a financial expert providing insights on cryptocurrencies.
-
-**User Query:** ${query}
-
-💹 **Crypto Overview for ${coinData?.name ?? ticker}:**
-- 💰 *Current Price (USD):* ${coinData?.current_price ?? "N/A"}
-- 💹 *Market Cap:* ${coinData?.market_cap ?? "N/A"}
-- 📈 *24h Change (%):* ${coinData?.price_change_percentage_24h ?? "N/A"}
-
-📰 **Latest Financial News:**
-${news.length > 0 ? news.map((n, index) => `${index + 1}. ${n.title} (${n.sentiment ?? "N/A"})`).join("\n") : "No relevant news found."}
-
-🔍 Provide an insightful response to the user's query based on this data.
-                `;
+            } else if (isMultiTicker) {
+                prompt = `Provide a financial summary for the following tickers: ${tickers.join(', ')}.`;
             } else {
-                // Stock via Alpha Vantage
-                let marketData: IMarketData = {};
-                let indicators: ITechnicalIndicators = {};
-                try {
-                    marketData = await AlphaVantageService.getMarketData(ticker, http, read) ?? {};
-                    indicators = await AlphaVantageService.getTechnicalIndicators(ticker, http, read) ?? {};
-                } catch (err) {
-                    logger?.error?.(`AlphaVantage error: ${err}`);
-                }
-                try {
-                    news = await NewsService.getLatestNews(http);
-                } catch (err) {
-                    logger?.error?.(`NewsService error: ${err}`);
-                }
-
-                if (!marketData.price) {
-                    await this.notifyUser(
-                        modify,
-                        context,
-                        `⚠️ Market data for *${ticker}* is unavailable. Please check the symbol.`
-                    );
-                    return;
-                }
-
-                prompt = `
-You are a financial expert providing insights on stock markets, technical indicators, and news sentiment analysis.
-
-**User Query:** ${query}
-
-📊 **Market Overview for ${ticker}:**
-- 💰 *Current Price:* ${marketData.price ?? "N/A"}
-- 📈 *50-day Moving Avg:* ${indicators.sma50 ?? "N/A"}
-- 📉 *200-day Moving Avg:* ${indicators.sma200 ?? "N/A"}
-- 📊 *Relative Strength Index (RSI):* ${indicators.rsi ?? "N/A"}
-
-📰 **Latest Financial News:**
-${news.length > 0 ? news.map((n, index) => `${index + 1}. ${n.title} (${n.sentiment ?? "N/A"})`).join("\n") : "No relevant news found."}
-
-🔍 Provide an insightful response to the user's query based on this data.
-                `;
+                prompt = query;
             }
 
             try {
-                responseText = await getGeminiChatResponse(prompt, http, read);
+                responseText = await llm.getChatResponse(prompt, http, read);
             } catch (err) {
-                logger?.error?.(`GeminiService error: ${err}`);
+                logger?.error?.(`LLMService error: ${err}`);
                 responseText = "⚠️ Sorry, I couldn't get a response from the AI service at this time.";
             }
 
             await this.notifyUser(modify, context, responseText);
 
         } catch (error: any) {
-            // Use Rocket.Chat logger if available
             logger?.error?.(`Error in /financechat command: ${error?.message ?? error}`);
             await this.notifyUser(
                 modify,
@@ -149,7 +125,6 @@ ${news.length > 0 ? news.map((n, index) => `${index + 1}. ${n.title} (${n.sentim
         }
     }
 
-    // Helper to send a message to the user
     private async notifyUser(modify: IModify, context: SlashCommandContext, text: string): Promise<void> {
         await modify.getNotifier().notifyUser(
             context.getSender(),
