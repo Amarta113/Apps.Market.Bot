@@ -3,8 +3,8 @@ import { IAppAccessors, ILogger } from '@rocket.chat/apps-engine/definition/acce
 import { IAppInfo } from '@rocket.chat/apps-engine/definition/metadata';
 import { IConfigurationExtend, IEnvironmentRead } from '@rocket.chat/apps-engine/definition/accessors';
 import { FinanceChatCommand } from './src/commands/FinanceChatCommand';
-import { MarketUpdateCommand } from './src/commands/MarketUpdateCommand';
 import { SettingType } from '@rocket.chat/apps-engine/definition/settings';
+import { MarketUpdateCommand } from './src/commands/MarketUpdateCommand';
 
 
 export class MarketBotApp extends App {
@@ -14,6 +14,8 @@ export class MarketBotApp extends App {
 
     public async extendConfiguration(configuration: IConfigurationExtend, environmentRead: IEnvironmentRead): Promise<void> {
         await configuration.slashCommands.provideSlashCommand(new FinanceChatCommand());
+        await configuration.slashCommands.provideSlashCommand(new MarketUpdateCommand());
+
         await configuration.settings.provideSetting({
             id: 'alpha_vantage_api_key',
             type: SettingType.STRING,

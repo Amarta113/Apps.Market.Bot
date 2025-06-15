@@ -1,60 +1,90 @@
 import { IHttp, IRead } from '@rocket.chat/apps-engine/definition/accessors';
 
-export interface IMarketData {
-    price?: number;
-    symbol?: string;
-    [key: string]: any;
+export interface AlphaVantageMarketData {
+    symbol: string;
+    open: number;
+    high: number;
+    low: number;
+    price: number;
+    volume: number;
+    previousClose: number;
+    change: number;
+    changePercent: string;
 }
 
 export interface ITechnicalIndicators {
     sma50?: number;
     sma200?: number;
     rsi?: number;
-    [key: string]: any;
 }
 
-const ALPHA_VANTAGE_BASE_URL = 'https://www.alphavantage.co/query';
-
 export class AlphaVantageService {
-    static async getMarketData(symbol: string, http: IHttp, read: IRead): Promise<IMarketData | undefined> {
-        const apiKey = await read.getEnvironmentReader().getSettings().getValueById('alpha_vantage_api_key');
-        const url = `${ALPHA_VANTAGE_BASE_URL}?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${apiKey}`;
+    public static async getMarketData(symbol: string, http: IHttp, read: IRead): Promise<AlphaVantageMarketData | null> {
+        const apiKey = await read.getEnvironmentReader().getSettings().getValueById('alphavantage_api_key');
+        if (!apiKey) {
+            throw new Error('Alpha Vantage API key is not set in app settings.');
+        }
+
+        const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(symbol)}&apikey=${apiKey}`;
         const response = await http.get(url);
 
-        if (!response.data || !response.data['Global Quote']) {
-            return undefined;
+        if (response.statusCode !== 200 || !response.data || !response.data['Global Quote']) {
+            return null;
         }
 
         const quote = response.data['Global Quote'];
         return {
-            price: parseFloat(quote['05. price']),
             symbol: quote['01. symbol'],
+            open: parseFloat(quote['02. open']),
+            high: parseFloat(quote['03. high']),
+            low: parseFloat(quote['04. low']),
+            price: parseFloat(quote['05. price']),
+            volume: parseInt(quote['06. volume'], 10),
+            previousClose: parseFloat(quote['08. previous close']),
+            change: parseFloat(quote['09. change']),
+            changePercent: quote['10. change percent'],
         };
     }
 
-    static async getTechnicalIndicators(symbol: string, http: IHttp, read: IRead): Promise<ITechnicalIndicators | undefined> {
-        const apiKey = await read.getEnvironmentReader().getSettings().getValueById('alpha_vantage_api_key');
-        const sma50Url = `${ALPHA_VANTAGE_BASE_URL}?function=SMA&symbol=${symbol}&interval=daily&time_period=50&series_type=close&apikey=${apiKey}`;
-        const sma200Url = `${ALPHA_VANTAGE_BASE_URL}?function=SMA&symbol=${symbol}&interval=daily&time_period=200&series_type=close&apikey=${apiKey}`;
-        const rsiUrl = `${ALPHA_VANTAGE_BASE_URL}?function=RSI&symbol=${symbol}&interval=daily&time_period=14&series_type=close&apikey=${apiKey}`;
+    public static async getTechnicalIndicators(symbol: string, http: IHttp, read: IRead): Promise<ITechnicalIndicators | null> {
+        const apiKey = await read.getEnvironmentReader().getSettings().getValueById('alphavantage_api_key');
+        if (!apiKey) {
+            throw new Error('Alpha Vantage API key is not set in app settings.');
+        }
 
-        const [sma50Resp, sma200Resp, rsiResp] = await Promise.all([
-            http.get(sma50Url),
-            http.get(sma200Url),
-            http.get(rsiUrl),
-        ]);
+        // SMA 50
+        const sma50Url = `https://www.alphavantage.co/query?function=SMA&symbol=${encodeURIComponent(symbol)}&interval=daily&time_period=50&series_type=close&apikey=${apiKey}`;
+        const sma50Response = await http.get(sma50Url);
+        let sma50: number | undefined;
+        if (sma50Response.statusCode === 200 && sma50Response.data && sma50Response.data['Technical Analysis: SMA']) {
+            const values = Object.values(sma50Response.data['Technical Analysis: SMA']);
+            if (values.length > 0 && (values[0] as any)['SMA']) {
+                sma50 = parseFloat((values[0] as any)['SMA']);
+            }
+        }
 
-        const getLastValue = (data: any, key: string) => {
-            const series = data[key];
-            if (!series) return undefined;
-            const lastDate = Object.keys(series).sort().pop();
-            return lastDate ? parseFloat(series[lastDate]['SMA'] || series[lastDate]['RSI']) : undefined;
-        };
+        // SMA 200
+        const sma200Url = `https://www.alphavantage.co/query?function=SMA&symbol=${encodeURIComponent(symbol)}&interval=daily&time_period=200&series_type=close&apikey=${apiKey}`;
+        const sma200Response = await http.get(sma200Url);
+        let sma200: number | undefined;
+        if (sma200Response.statusCode === 200 && sma200Response.data && sma200Response.data['Technical Analysis: SMA']) {
+            const values = Object.values(sma200Response.data['Technical Analysis: SMA']);
+            if (values.length > 0 && (values[0] as any)['SMA']) {
+                sma200 = parseFloat((values[0] as any)['SMA']);
+            }
+        }
 
-        return {
-            sma50: getLastValue(sma50Resp.data, 'Technical Analysis: SMA'),
-            sma200: getLastValue(sma200Resp.data, 'Technical Analysis: SMA'),
-            rsi: getLastValue(rsiResp.data, 'Technical Analysis: RSI'),
-        };
+        // RSI
+        const rsiUrl = `https://www.alphavantage.co/query?function=RSI&symbol=${encodeURIComponent(symbol)}&interval=daily&time_period=14&series_type=close&apikey=${apiKey}`;
+        const rsiResponse = await http.get(rsiUrl);
+        let rsi: number | undefined;
+        if (rsiResponse.statusCode === 200 && rsiResponse.data && rsiResponse.data['Technical Analysis: RSI']) {
+            const values = Object.values(rsiResponse.data['Technical Analysis: RSI']);
+            if (values.length > 0 && (values[0] as any)['RSI']) {
+                rsi = parseFloat((values[0] as any)['RSI']);
+            }
+        }
+
+        return { sma50, sma200, rsi };
     }
 }

@@ -7,6 +7,13 @@ export interface ICoinGeckoMarketData {
     current_price: number;
     market_cap: number;
     price_change_percentage_24h: number;
+    high_24h: number;
+    low_24h: number;
+    total_volume: number;
+    circulating_supply: number;
+    total_supply: number;
+    ath: number;
+    atl: number;
     [key: string]: any;
 }
 
