@@ -1,7 +1,14 @@
 import { INewsArticle } from '../external/NewsService';
-import { IMarketData, ITechnicalIndicators } from '../external/AlphaVantage';
+import { IMarketData } from '../external/MarketDataService';
+import { ITechnicalIndicators } from '../external/AlphaVantage'; // Update this path if needed
 
-export function buildStockPrompt(query: string, ticker: string, marketData: IMarketData, indicators: ITechnicalIndicators, news: INewsArticle[]): string {
+export function buildStockPrompt(
+    query: string,
+    ticker: string,
+    marketData: IMarketData,
+    indicators: ITechnicalIndicators,
+    news: INewsArticle[]
+): string {
     return `
 You are a financial expert providing insights on stock markets, technical indicators, and news sentiment analysis.
 
