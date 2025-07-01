@@ -9,20 +9,13 @@ import {
     IPersistence,
     ILogger,
 } from "@rocket.chat/apps-engine/definition/accessors";
-import {
-    AlphaVantageService,
-    IMarketData,
-    ITechnicalIndicators,
-} from "../external/AlphaVantage";
-import {
-    CoinGeckoService,
-    ICoinGeckoMarketData,
-} from "../external/CoinGeckoService";
+import { MarketDataService, IMarketData } from "../external/MarketDataService";
 import { NewsService, INewsArticle } from "../external/NewsService";
 import { GeminiService } from "../external/GeminiService";
 import { buildCryptoPrompt } from "../prompts/cryptoPrompt";
 import { buildStockPrompt } from "../prompts/stockPrompt";
 import { NotifierService } from "../service/NotifyUserService";
+
 export class FinanceChatCommand implements ISlashCommand {
     public command = "financechat";
     public i18nDescription =
@@ -66,6 +59,7 @@ export class FinanceChatCommand implements ISlashCommand {
             const tickers = args.filter((arg) => /^[A-Za-z0-9]+$/.test(arg));
             const isMultiTicker =
                 tickers.length === args.length && tickers.length > 1;
+
             const isSingleTicker = tickers.length === 1 && args.length === 1;
 
             let prompt: string;
@@ -74,72 +68,43 @@ export class FinanceChatCommand implements ISlashCommand {
 
             if (isSingleTicker) {
                 const ticker = tickers[0].toUpperCase();
-                let coins: Array<{ id: string; symbol: string; name: string }> =
-                    [];
+
+                let marketData: IMarketData | null = null;
+
                 try {
-                    coins = await CoinGeckoService.searchCoins(ticker, http);
+                    // Fetch both market data and technical indicators
+                    marketData = await MarketDataService.getMarketData(
+                        ticker,
+                        http,
+                        read,
+                        true
+                    );
                 } catch (err) {
-                    logger?.error?.(`CoinGecko search error: ${err}`);
+                    logger?.error?.(`MarketDataService error: ${err}`);
                 }
-                const coinMatch = coins.find(
-                    (c) => c.symbol.toUpperCase() === ticker
-                );
+                try {
+                    news = await NewsService.getLatestNews(http);
+                } catch (err) {
+                    logger?.error?.(`NewsService error: ${err}`);
+                }
 
-                if (coinMatch) {
-                    let coinData: ICoinGeckoMarketData | undefined;
-                    try {
-                        coinData = await CoinGeckoService.getMarketData(
-                            coinMatch.id,
-                            http
-                        );
-                    } catch (err) {
-                        logger?.error?.(`CoinGecko market data error: ${err}`);
-                    }
-                    try {
-                        news = await NewsService.getLatestNews(http);
-                    } catch (err) {
-                        logger?.error?.(`NewsService error: ${err}`);
-                    }
-                    prompt = buildCryptoPrompt(query, coinData, news);
+                if (!marketData || !marketData.price) {
+                    await NotifierService.notifyUser(
+                        modify,
+                        context,
+                        `⚠️ Market data for *${ticker}* is unavailable. Please check the symbol.`
+                    );
+                    return;
+                }
+
+                if (marketData.isCrypto) {
+                    prompt = buildCryptoPrompt(query, marketData as any, news);
                 } else {
-                    let marketData: IMarketData = {};
-                    let indicators: ITechnicalIndicators = {};
-                    try {
-                        marketData =
-                            (await AlphaVantageService.getMarketData(
-                                ticker,
-                                http,
-                                read
-                            )) ?? {};
-                        indicators =
-                            (await AlphaVantageService.getTechnicalIndicators(
-                                ticker,
-                                http,
-                                read
-                            )) ?? {};
-                    } catch (err) {
-                        logger?.error?.(`AlphaVantage error: ${err}`);
-                    }
-                    try {
-                        news = await NewsService.getLatestNews(http);
-                    } catch (err) {
-                        logger?.error?.(`NewsService error: ${err}`);
-                    }
-
-                    if (!marketData.price) {
-                        await NotifierService.notifyUser(
-                            modify,
-                            context,
-                            `⚠️ Market data for *${ticker}* is unavailable. Please check the symbol.`
-                        );
-
-                        return;
-                    }
                     prompt = buildStockPrompt(
                         query,
                         ticker,
                         marketData,
-                        indicators,
+                        marketData,
                         news
                     );
                 }

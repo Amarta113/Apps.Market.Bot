@@ -11,7 +11,8 @@ import {
 } from "@rocket.chat/apps-engine/definition/accessors";
 import { WatchlistService } from "../service/WatchlistService";
 import { CoinGeckoService } from "../external/CoinGeckoService";
-import { AlphaVantageService, IMarketData } from "../external/AlphaVantage";
+import { AlphaVantageService } from "../external/AlphaVantage";
+import { IMarketData } from "../external/MarketDataService";
 import { NotifierService } from "../service/NotifyUserService";
 export class AddToWatchlistCommand implements ISlashCommand {
     public command = "addtowatchlist";

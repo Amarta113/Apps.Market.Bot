@@ -8,14 +8,12 @@ import {
     IConfigurationExtend,
     IEnvironmentRead,
 } from "@rocket.chat/apps-engine/definition/accessors";
+import { SettingType } from "@rocket.chat/apps-engine/definition/settings";
 import { FinanceChatCommand } from "./src/commands/FinanceChatCommand";
-import {
-    ISetting,
-    SettingType,
-} from "@rocket.chat/apps-engine/definition/settings";
 import { AddToWatchlistCommand } from "./src/commands/AddToWatchlistCommand";
 import { ShowWatchlistCommand } from "./src/commands/ShowWatchlistCommand";
 import { RemoveFromWatchlistCommand } from "./src/commands/RemoveFromWatchlistCommand";
+import { MarketUpdateCommand } from "./src/commands/MarketUpdateCommand";
 
 export class MarketBotApp extends App {
     constructor(info: IAppInfo, logger: ILogger, accessors: IAppAccessors) {
@@ -30,6 +28,9 @@ export class MarketBotApp extends App {
             new FinanceChatCommand()
         );
         await configuration.slashCommands.provideSlashCommand(
+            new MarketUpdateCommand()
+        );
+        await configuration.slashCommands.provideSlashCommand(
             new AddToWatchlistCommand()
         );
         await configuration.slashCommands.provideSlashCommand(
@@ -38,6 +39,7 @@ export class MarketBotApp extends App {
         await configuration.slashCommands.provideSlashCommand(
             new RemoveFromWatchlistCommand()
         );
+
         await configuration.settings.provideSetting({
             id: "alpha_vantage_api_key",
             type: SettingType.STRING,
@@ -47,6 +49,8 @@ export class MarketBotApp extends App {
             i18nLabel: "Alpha Vantage API Key",
             i18nDescription: "API key for Alpha Vantage",
         });
+
+        // Register Gemini API Key
         await configuration.settings.provideSetting({
             id: "gemini_api_key",
             type: SettingType.STRING,
