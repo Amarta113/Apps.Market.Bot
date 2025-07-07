@@ -1,5 +1,5 @@
 import { IHttp, IRead } from '@rocket.chat/apps-engine/definition/accessors';
-import { ALPHA_VANTAGE_API_KEY_SETTING_ID } from '../constants';
+import { ALPHA_VANTAGE_API_KEY_SETTING_ID } from './constants';
 
 export interface AlphaVantageMarketData {
     symbol: string;
