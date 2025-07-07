@@ -1,7 +1,7 @@
 {
     "id": "7be274bc-d14e-4c31-9caa-78ce6df3a646",
     "version": "0.0.1",
-    "requiredApiVersion": "1.50.0",
+    "requiredApiVersion": "^1.50.0",
     "iconFile": "FinKitLogo.png",
     "author": {
         "name": "market-bot innovators",
